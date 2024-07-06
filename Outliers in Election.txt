@@ -1,0 +1,79 @@
+import pandas as pd
+import numpy as np
+
+# Load the data
+df = pd.read_csv(r"C:/Users/Salis-Smart/Documents/hng/task-one/Outliers Detection.csv")
+print (df)
+
+# Define the proximity radius (in this case, 1 km)
+proximity_radius = 1
+
+# Create a function to calculate the distance between two points
+def haversine_distance(lat1, lon1, lat2, lon2):
+    R = 6371  # radius of the Earth in km
+    dlat = np.radians(lat2 - lat1)
+    dlon = np.radians(lon2 - lon1)
+    a = np.sin(dlat/2)**2 + np.cos(np.radians(lat1))*np.cos(np.radians(lat2))*np.sin(dlon/2)**2
+    c = 2*np.arctan2(np.sqrt(a), np.sqrt(1-a))
+    distance = R * c
+    return distance
+
+# Create a function to group polling units into clusters based on proximity
+def cluster_polling_units(df, proximity_radius):
+    clusters = {}
+    for index, row in df.iterrows():
+        found_cluster = False
+        for cluster_name, cluster_units in clusters.items():
+            for unit in cluster_units:
+                unit_lat = df.loc[unit, 'latitude']
+                unit_lon = df.loc[unit, 'longitude']
+                lat_diff = row['latitude'] - unit_lat
+                lon_diff = row['longitude'] - unit_lon
+                distance = haversine_distance(lat_diff, lon_diff)
+                if distance < proximity_radius:
+                    clusters[cluster_name].append(row['name'])
+                    found_cluster = True
+                    break
+            if found_cluster:
+                break
+        if not found_cluster:
+            new_cluster_name = f'Cluster {len(clusters) + 1}'
+            clusters[new_cluster_name] = [row['name']]
+    return clusters
+
+# Group polling units into clusters
+clusters = cluster_polling_units(df, proximity_radius)
+
+# Create a function to calculate the outlier score for each party within a cluster
+def calculate_outlier_score(cluster_df, party):
+    votes = cluster_df[party]
+    mean_votes = votes.mean()
+    std_votes = votes.std()
+    outlier_score = np.abs((votes - mean_votes) / std_votes)
+    return outlier_score
+
+# Calculate outlier scores for each party within each cluster
+outlier_scores = {}
+for cluster_name, cluster_df in clusters.items():
+    for party in ['APC', 'PDP', 'Others']:
+        scores = calculate_outlier_score(cluster_df, party)
+        outlier_scores[(cluster_name, party)] = scores
+
+# Record the outlier scores and corresponding parties and units
+outlier_data = []
+for (cluster_name, party), scores in outlier_scores.items():
+    for unit in cluster_df.index:
+        outlier_data.append({
+            'Cluster': cluster_name,
+            'Party': party,
+            'Unit': unit,
+            'Outlier Score': scores[unit]
+        })
+# Sort the data by outlier score and identify the top 3 outliers for each party
+outlier_data.sort_values('Outlier Score', ascending=False)
+
+# Highlight the top 3 outliers and their closest units
+top_outliers = outlier_data.groupby('Party')['Unit'].nlargest(3).reset_index()
+print(top_outliers)
+
+Print() 
